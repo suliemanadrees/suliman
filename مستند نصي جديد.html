@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>إدارة قطع الدراجات النارية</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Cairo -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel Standalone -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        * {
+            font-family: 'Cairo', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background-color: #f8fafc;
+            color: #0f172a;
+            user-select: none;
+        }
+        .price-tag-usd {
+            color: #0284c7;
+        }
+        .price-tag-syp {
+            color: #16a34a;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-20">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- البيانات الافتراضية الأولية ---
+        const INITIAL_CATEGORIES = [
+            { id: '1', name: 'قطع أساسية', icon: '⚡', sort_order: 1 },
+            { id: '2', name: 'قطع ماكينة', icon: '⚙️', sort_order: 2 },
+            { id: '3', name: 'قطع زينة وإكسسوارات', icon: '✨', sort_order: 3 },
+            { id: '4', name: 'قطع كهرباء', icon: '🔋', sort_order: 4 },
+            { id: '5', name: 'قطع فرامل وعجلات', icon: '🛞', sort_order: 5 },
+            { id: '6', name: 'زيوت وصيانة', icon: '🛢️', sort_order: 6 },
+            { id: '7', name: 'أخرى', icon: '📦', sort_order: 7 }
+        ];
+
+        const INITIAL_SETTINGS = {
+            shop_name: 'محل التميز لقطع الدراجات النارية',
+            dollar_rate: 15000,
+            low_stock_threshold: 2,
+            last_updated: new Date().toLocaleString('ar-SY', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' })
+        };
+
+        const INITIAL_PRODUCTS = [
+            {
+                id: 'p1',
+                name: 'بستم 125cc',
+                category_id: '2',
+                price_without_installation_usd: 15,
+                price_with_installation_usd: 22,
+                stock_quantity: 5,
+                notes: 'قطعة أصلية نخب أول'
+            },
+            {
+                id: 'p2',
+                name: 'شنابر بستم',
+                category_id: '2',
+                price_without_installation_usd: 8,
+                price_with_installation_usd: 12,
+                stock_quantity: 8,
+                notes: 'مقاوم للحرارة العالية'
+            },
+            {
+                id: 'p3',
+                name: 'كلتش كامل',
+                category_id: '2',
+                price_without_installation_usd: 25,
+                price_with_installation_usd: 35,
+                stock_quantity: 2,
+                notes: 'نوعية ياباني ممتاز'
+            },
+            {
+                id: 'p4',
+                name: 'بوجي رياضية',
+                category_id: '1',
+                price_without_installation_usd: 3,
+                price_with_installation_usd: 4,
+                stock_quantity: 12,
+                notes: 'شرارة قوية'
+            },
+            {
+                id: 'p5',
+                name: 'فلتر هواء',
+                category_id: '1',
+                price_without_installation_usd: 5,
+                price_with_installation_usd: 6,
+                stock_quantity: 1,
+                notes: 'قابل للتنظيف'
+            },
+            {
+                id: 'p6',
+                name: 'فحمات فرامل أمامية',
+                category_id: '5',
+                price_without_installation_usd: 6,
+                price_with_installation_usd: 9,
+                stock_quantity: 0,
+                notes: 'عمر طويل بدون صفير'
+            },
+            {
+                id: 'p7',
+                name: 'بطارية 12 فولت',
+                category_id: '4',
+                price_without_installation_usd: 18,
+                price_with_installation_usd: 20,
+                stock_quantity: 4,
+                notes: 'جافة مع كفالة شهرين'
+            },
+            {
+                id: 'p8',
+                name: 'زيت محرك 1 ليتر 20W50',
+                category_id: '6',
+                price_without_installation_usd: 7,
+                price_with_installation_usd: 7,
+                stock_quantity: 15,
+                notes: 'زيت معدني ممتاز'
+            }
+        ];
+
+        // --- المكون الرئيسي ---
+        function App() {
+            // حالة التطبيق مع الحفظ في LocalStorage
+            const [categories, setCategories] = useState(() => {
+                const saved = localStorage.getItem('moto_categories');
+                return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
+            });
+
+            const [products, setProducts] = useState(() => {
+                const saved = localStorage.getItem('moto_products');
+                return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+            });
+
+            const [settings, setSettings] = useState(() => {
+                const saved = localStorage.getItem('moto_settings');
+                return saved ? JSON.parse(saved) : INITIAL_SETTINGS;
+            });
+
+            // حالات الواجهة
+            const [searchQuery, setSearchQuery] = useState('');
+            const [selectedCategory, setSelectedCategory] = useState('ALL');
+            const [activeModal, setActiveModal] = useState(null); // 'ADD_PRODUCT' | 'EDIT_PRODUCT' | 'DOLLAR' | 'SETTINGS' | 'CATEGORIES' | 'VIEW_PRODUCT'
+            const [currentProduct, setCurrentProduct] = useState(null);
+            const [toastMessage, setToastMessage] = useState('');
+
+            // مزامنة LocalStorage
+            useEffect(() => {
+                localStorage.setItem('moto_categories', JSON.stringify(categories));
+            }, [categories]);
+
+            useEffect(() => {
+                localStorage.setItem('moto_products', JSON.stringify(products));
+            }, [products]);
+
+            useEffect(() => {
+                localStorage.setItem('moto_settings', JSON.stringify(settings));
+            }, [settings]);
+
+            // إشعار سريع
+            const showToast = (msg) => {
+                setToastMessage(msg);
+                setTimeout(() => setToastMessage(''), 3000);
+            };
+
+            // تنسيق المبالغ بالليرة السورية
+            const formatSYP = (usdAmount) => {
+                const syp = Math.round(usdAmount * settings.dollar_rate);
+                return syp.toLocaleString('en-US') + ' ل.س';
+            };
+
+            // تصفية القطع حسب البحث والتصنيف
+            const filteredProducts = useMemo(() => {
+                return products.filter(product => {
+                    const matchesCategory = selectedCategory === 'ALL' || product.category_id === selectedCategory;
+                    const catObj = categories.find(c => c.id === product.category_id);
+                    const categoryName = catObj ? catObj.name : '';
+                    const matchesSearch = 
+                        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        categoryName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (product.notes && product.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+
+                    return matchesCategory && matchesSearch;
+                });
+            }, [products, searchQuery, selectedCategory, categories]);
+
+            // إضافة أو تعديل قطعة
+            const handleSaveProduct = (formData) => {
+                if (formData.id) {
+                    setProducts(products.map(p => p.id === formData.id ? formData : p));
+                    showToast('تم تعديل القطعة بنجاح');
+                } else {
+                    const newProd = {
+                        ...formData,
+                        id: 'p_' + Date.now()
+                    };
+                    setProducts([newProd, ...products]);
+                    showToast('تمت إضافة القطعة بنجاح');
+                }
+                setActiveModal(null);
+                setCurrentProduct(null);
+            };
+
+            // حذف قطعة
+            const handleDeleteProduct = (id) => {
+                if (confirm('هل أنت تأكد من حذف هذه القطعة؟')) {
+                    setProducts(products.filter(p => p.id !== id));
+                    showToast('تم حذف القطعة');
+                    setActiveModal(null);
+                }
+            };
+
+            // تحديث سعر الدولار
+            const handleUpdateDollar = (newRate) => {
+                const now = new Date().toLocaleString('ar-SY', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' });
+                setSettings({
+                    ...settings,
+                    dollar_rate: Number(newRate),
+                    last_updated: now
+                });
+                showToast('تم تحديث سعر الدولار وإعادة حساب الأسعار تلقائياً');
+                setActiveModal(null);
+            };
+
+            return (
+                <div class="max-w-md mx-auto min-h-screen flex flex-col relative px-3 pt-3">
+                    
+                    {/* إشعار عائم */}
+                    {toastMessage && (
+                        <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-sm font-bold px-4 py-2.5 rounded-full shadow-2xl transition duration-300">
+                            {toastMessage}
+                        </div>
+                    )}
+
+                    {/* الهيدر العلوي */}
+                    <header class="flex justify-between items-center mb-3">
+                        <div>
+                            <h1 class="text-lg font-extrabold text-slate-800 leading-tight">{settings.shop_name}</h1>
+                            <p class="text-xs text-slate-500 font-semibold">نظام التسعير المباشر والمخزون</p>
+                        </div>
+                        <button 
+                            onClick={() => setActiveModal('SETTINGS')}
+                            class="p-2 rounded-xl bg-slate-200 text-slate-700 hover:bg-slate-300 transition text-sm font-bold"
+                            title="الإعدادات"
+                        >
+                            ⚙️
+                        </button>
+                    </header>
+
+                    {/* بطاقة سعر الدولار المباشر */}
+                    <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl p-4 shadow-lg mb-4 relative overflow-hidden">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="text-xs font-bold bg-white/20 px-2.5 py-1 rounded-full backdrop-blur-sm">💵 سعر الدولار الحالي</span>
+                                <div class="text-3xl font-extrabold mt-2 tracking-tight">
+                                    {Number(settings.dollar_rate).toLocaleString('en-US')} <span class="text-sm font-bold text-emerald-200">ل.س</span>
+                                </div>
+                                <div class="text-[11px] text-emerald-100 mt-1 font-medium">
+                                    آخر تحديث: {settings.last_updated}
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setActiveModal('DOLLAR')}
+                                class="bg-white text-emerald-800 text-xs font-bold px-3 py-2 rounded-xl shadow hover:bg-emerald-50 active:scale-95 transition"
+                            >
+                                تعديل السعر
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* مربع البحث الرئيسي */}
+                    <div class="relative mb-4">
+                        <input 
+                            type="text"
+                            placeholder="ابحث عن قطعة أو قسم..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            class="w-full bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-2xl py-3 pr-10 pl-10 text-slate-800 font-bold placeholder-slate-400 shadow-sm outline-none transition"
+                        />
+                        <span class="absolute right-3.5 top-3.5 text-slate-400 text-lg">🔍</span>
+                        {searchQuery && (
+                            <button 
+                                onClick={() => setSearchQuery('')}
+                                class="absolute left-3.5 top-3.5 text-slate-400 hover:text-slate-600 font-bold text-sm bg-slate-100 rounded-full w-6 h-6 flex items-center justify-center"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
+
+                    {/* قائمة الأقسام الأفقي/بطاقات */}
+                    {!searchQuery && (
+                        <div class="mb-4">
+                            <div class="flex justify-between items-center mb-2 px-1">
+                                <h2 class="text-sm font-bold text-slate-700">الأقسام</h2>
+                                <button 
+                                    onClick={() => setActiveModal('CATEGORIES')}
+                                    class="text-xs font-bold text-emerald-700 hover:underline"
+                                >
+                                    إدارة الأقسام ⚙️
+                                </button>
+                            </div>
+                            <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                                <button
+                                    onClick={() => setSelectedCategory('ALL')}
+                                    class={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm transition border ${
+                                        selectedCategory === 'ALL'
+                                            ? 'bg-slate-900 text-white border-slate-900'
+                                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                    }`}
+                                >
+                                    الكل ({products.length})
+                                </button>
+                                {categories.map(cat => {
+                                    const count = products.filter(p => p.category_id === cat.id).length;
+                                    return (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => setSelectedCategory(cat.id)}
+                                            class={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm transition flex items-center gap-1.5 border ${
+                                                selectedCategory === cat.id
+                                                    ? 'bg-emerald-600 text-white border-emerald-600'
+                                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            <span>{cat.icon || '📦'}</span>
+                                            <span>{cat.name}</span>
+                                            <span class={`text-[10px] px-1.5 py-0.5 rounded-full ${selectedCategory === cat.id ? 'bg-emerald-800 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                                {count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* قائمة نتائج القطع */}
+                    <div class="flex-1 space-y-3 mb-20">
+                        <div class="flex justify-between items-center px-1">
+                            <span class="text-xs font-bold text-slate-500">
+                                {searchQuery ? `نتائج البحث (${filteredProducts.length})` : `القطع المتاحة (${filteredProducts.length})`}
+                            </span>
+                        </div>
+
+                        {filteredProducts.length === 0 ? (
+                            <div class="bg-white rounded-2xl p-8 text-center border-2 border-dashed border-slate-200">
+                                <p class="text-3xl mb-2">🔎</p>
+                                <p class="text-slate-600 font-bold text-sm">لا توجد قطعة مطابقة للبحث</p>
+                                <button 
+                                    onClick={() => { setSearchQuery(''); setSelectedCategory('ALL'); }}
+                                    class="mt-3 text-xs font-bold text-emerald-600 underline"
+                                >
+                                    عرض جميع القطع
+                                </button>
+                            </div>
+                        ) : (
+                            filteredProducts.map(product => {
+                                const categoryObj = categories.find(c => c.id === product.category_id);
+                                const isOutOfStock = product.stock_quantity <= 0;
+                                const isLowStock = product.stock_quantity > 0 && product.stock_quantity <= settings.low_stock_threshold;
+
+                                return (
+                                    <div 
+                                        key={product.id}
+                                        class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 hover:border-slate-300 transition relative"
+                                    >
+                                        <div class="flex justify-between items-start mb-2">
+                                            <div>
+                                                <h3 class="text-base font-extrabold text-slate-900">{product.name}</h3>
+                                                <span class="inline-block text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md mt-1">
+                                                    {categoryObj ? `${categoryObj.icon || ''} ${categoryObj.name}` : 'بدون قسم'}
+                                                </span>
+                                            </div>
+
+                                            {/* شارة الكمية */}
+                                            <div class="text-left">
+                                                {isOutOfStock ? (
+                                                    <span class="bg-red-100 text-red-700 border border-red-200 text-[11px] font-black px-2 py-1 rounded-lg inline-block">
+                                                        ⚠️ نفذت الكمية
+                                                    </span>
+                                                ) : isLowStock ? (
+                                                    <span class="bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-black px-2 py-1 rounded-lg inline-block">
+                                                        ⚡ كمية منخفضة ({product.stock_quantity})
+                                                    </span>
+                                                ) : (
+                                                    <span class="bg-slate-100 text-slate-700 text-[11px] font-bold px-2 py-1 rounded-lg inline-block">
+                                                        الكمية: {product.stock_quantity}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* عارض الأسعار البارز */}
+                                        <div class="grid grid-cols-2 gap-2 mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                            {/* بدون تركيب */}
+                                            <div class="bg-white p-2.5 rounded-lg border border-slate-200/80 shadow-2xs">
+                                                <div class="text-[11px] font-bold text-slate-500 mb-0.5">بدون تركيب</div>
+                                                <div class="text-base font-black text-sky-700">${product.price_without_installation_usd}</div>
+                                                <div class="text-sm font-extrabold text-emerald-700">{formatSYP(product.price_without_installation_usd)}</div>
+                                            </div>
+
+                                            {/* مع تركيب */}
+                                            <div class="bg-white p-2.5 rounded-lg border border-slate-200/80 shadow-2xs">
+                                                <div class="text-[11px] font-bold text-slate-500 mb-0.5">مع تركيب</div>
+                                                <div class="text-base font-black text-sky-700">${product.price_with_installation_usd}</div>
+                                                <div class="text-sm font-extrabold text-emerald-700">{formatSYP(product.price_with_installation_usd)}</div>
+                                            </div>
+                                        </div>
+
+                                        {product.notes && (
+                                            <p class="text-xs text-slate-500 mt-2 font-medium bg-amber-50/60 p-1.5 rounded-lg border border-amber-100">
+                                                📝 {product.notes}
+                                            </p>
+                                        )}
+
+                                        {/* أدوات التحكم بالقطعة */}
+                                        <div class="flex justify-end gap-2 mt-3 pt-2 border-t border-slate-100">
+                                            <button 
+                                                onClick={() => { setCurrentProduct(product); setActiveModal('EDIT_PRODUCT'); }}
+                                                class="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition"
+                                            >
+                                                ✏️ تعديل
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDeleteProduct(product.id)}
+                                                class="text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition"
+                                            >
+                                                🗑️ حذف
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    {/* زر الإضافة السريع العائم */}
+                    <div class="fixed bottom-4 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-40">
+                        <button 
+                            onClick={() => { setCurrentProduct(null); setActiveModal('ADD_PRODUCT'); }}
+                            class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-extrabold py-3.5 rounded-2xl shadow-xl flex items-center justify-center gap-2 text-base transition"
+                        >
+                            <span>➕ إضافة قطعة جديدة</span>
+                        </button>
+                    </div>
+
+                    {/* --- المودالات (Modals) --- */}
+
+                    {/* مودال تعديل سعر الدولار */}
+                    {activeModal === 'DOLLAR' && (
+                        <Modal title="تعديل سعر الدولار" onClose={() => setActiveModal(null)}>
+                            <form onSubmit={(e) => {
+                                e.preventDefault();
+                                handleUpdateDollar(e.target.dollarRate.value);
+                            }}>
+                                <div class="mb-4">
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">سعر صرف الدولار الحالي بالليرة (SYP)</label>
+                                    <input 
+                                        type="number" 
+                                        name="dollarRate"
+                                        defaultValue={settings.dollar_rate}
+                                        required
+                                        step="100"
+                                        class="w-full bg-slate-50 border-2 border-slate-300 focus:border-emerald-500 rounded-xl p-3 text-lg font-black text-slate-800 outline-none"
+                                    />
+                                    <p class="text-[11px] text-slate-500 mt-1 font-medium">سيتم تحديث كافة أسعار القطع بالليرة فوراً بناءً على هذا السعر.</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button type="submit" class="flex-1 bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700">حفظ السعر الجديد</button>
+                                    <button type="button" onClick={() => setActiveModal(null)} class="bg-slate-200 text-slate-700 font-bold px-4 rounded-xl">إلغاء</button>
+                                </div>
+                            </form>
+                        </Modal>
+                    )}
+
+                    {/* مودال إضافة/تعديل قطعة */}
+                    {(activeModal === 'ADD_PRODUCT' || activeModal === 'EDIT_PRODUCT') && (
+                        <ProductFormModal 
+                            product={currentProduct}
+                            categories={categories}
+                            onSave={handleSaveProduct}
+                            onClose={() => { setActiveModal(null); setCurrentProduct(null); }}
+                        />
+                    )}
+
+                    {/* مودال إدارة الأقسام */}
+                    {activeModal === 'CATEGORIES' && (
+                        <CategoriesManagementModal 
+                            categories={categories}
+                            products={products}
+                            onSaveCategories={setCategories}
+                            onClose={() => setActiveModal(null)}
+                            showToast={showToast}
+                        />
+                    )}
+
+                    {/* مودال الإعدادات العامة */}
+                    {activeModal === 'SETTINGS' && (
+                        <Modal title="إعدادات المحل" onClose={() => setActiveModal(null)}>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">اسم المحل</label>
+                                    <input 
+                                        type="text" 
+                                        value={settings.shop_name}
+                                        onChange={(e) => setSettings({...settings, shop_name: e.target.value})}
+                                        class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800"
+                                    />
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">حد تنبيه المخزون المنخفض</label>
+                                    <input 
+                                        type="number" 
+                                        value={settings.low_stock_threshold}
+                                        onChange={(e) => setSettings({...settings, low_stock_threshold: Number(e.target.value)})}
+                                        class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800"
+                                    />
+                                    <p class="text-[11px] text-slate-500 mt-1">يظهر التنبيه عندما تساوي الكمية هذا الرقم أو أقل.</p>
+                                </div>
+                                <div class="pt-2 border-t border-slate-100">
+                                    <button 
+                                        onClick={() => setActiveModal(null)} 
+                                        class="w-full bg-slate-900 text-white font-bold py-2.5 rounded-xl"
+                                    >
+                                        إغلاق
+                                    </button>
+                                </div>
+                            </div>
+                        </Modal>
+                    )}
+
+                </div>
+            );
+        }
+
+        // --- المكون الفرعي: النافذة المنبثقة العامة ---
+        function Modal({ title, children, onClose }) {
+            return (
+                <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div class="bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div class="flex justify-between items-center mb-4 pb-2 border-b border-slate-100">
+                            <h3 class="font-extrabold text-base text-slate-800">{title}</h3>
+                            <button onClick={onClose} class="text-slate-400 hover:text-slate-600 font-black text-lg">✕</button>
+                        </div>
+                        {children}
+                    </div>
+                </div>
+            );
+        }
+
+        // --- المكون الفرعي: استمارة إضافة/تعديل قطعة ---
+        function ProductFormModal({ product, categories, onSave, onClose }) {
+            const [name, setName] = useState(product ? product.name : '');
+            const [categoryId, setCategoryId] = useState(product ? product.category_id : (categories[0] ? categories[0].id : ''));
+            const [priceNoInstall, setPriceNoInstall] = useState(product ? product.price_without_installation_usd : '');
+            const [priceWithInstall, setPriceWithInstall] = useState(product ? product.price_with_installation_usd : '');
+            const [stock, setStock] = useState(product ? product.stock_quantity : 1);
+            const [notes, setNotes] = useState(product ? product.notes : '');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSave({
+                    id: product ? product.id : null,
+                    name,
+                    category_id: categoryId,
+                    price_without_installation_usd: Number(priceNoInstall),
+                    price_with_installation_usd: Number(priceWithInstall),
+                    stock_quantity: Number(stock),
+                    notes
+                });
+            };
+
+            return (
+                <Modal title={product ? 'تعديل بيانات القطعة' : 'إضافة قطعة جديدة'} onClose={onClose}>
+                    <form onSubmit={handleSubmit} class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">اسم القطعة *</label>
+                            <input 
+                                type="text" 
+                                required
+                                placeholder="مثال: بستم، بواجي، زيت..."
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                class="w-full bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl p-2.5 text-sm font-bold text-slate-800 outline-none"
+                            />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">القسم *</label>
+                            <select 
+                                value={categoryId}
+                                onChange={(e) => setCategoryId(e.target.value)}
+                                class="w-full bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl p-2.5 text-sm font-bold text-slate-800 outline-none"
+                            >
+                                {categories.map(c => (
+                                    <option key={c.id} value={c.id}>{c.icon || '📦'} {c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">السعر بدون تركيب ($) *</label>
+                                <input 
+                                    type="number" 
+                                    step="0.5"
+                                    required
+                                    placeholder="0"
+                                    value={priceNoInstall}
+                                    onChange={(e) => setPriceNoInstall(e.target.value)}
+                                    class="w-full bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl p-2.5 text-sm font-bold text-slate-800 outline-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">السعر مع تركيب ($) *</label>
+                                <input 
+                                    type="number" 
+                                    step="0.5"
+                                    required
+                                    placeholder="0"
+                                    value={priceWithInstall}
+                                    onChange={(e) => setPriceWithInstall(e.target.value)}
+                                    class="w-full bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl p-2.5 text-sm font-bold text-slate-800 outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">الكمية بالمخزون</label>
+                            <input 
+                                type="number" 
+                                min="0"
+                                value={stock}
+                                onChange={(e) => setStock(e.target.value)}
+                                class="w-full bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl p-2.5 text-sm font-bold text-slate-800 outline-none"
+                            />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">ملاحظات (اختياري)</label>
+                            <input 
+                                type="text" 
+                                placeholder="مثال: أصلية، ياباني، كفالة..."
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                class="w-full bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-xl p-2.5 text-sm font-bold text-slate-800 outline-none"
+                            />
+                        </div>
+
+                        <div class="flex gap-2 pt-2">
+                            <button type="submit" class="flex-1 bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700 transition">
+                                {product ? 'حفظ التعديلات' : 'إضافة القطعة'}
+                            </button>
+                            <button type="button" onClick={onClose} class="bg-slate-200 text-slate-700 font-bold px-4 rounded-xl">إلغاء</button>
+                        </div>
+                    </form>
+                </Modal>
+            );
+        }
+
+        // --- المكون الفرعي: إدارة الأقسام ---
+        function CategoriesManagementModal({ categories, products, onSaveCategories, onClose, showToast }) {
+            const [newCatName, setNewCatName] = useState('');
+            const [newCatIcon, setNewCatIcon] = useState('📦');
+
+            const handleAddCategory = (e) => {
+                e.preventDefault();
+                if (!newCatName.trim()) return;
+                const newCat = {
+                    id: 'c_' + Date.now(),
+                    name: newCatName.trim(),
+                    icon: newCatIcon || '📦',
+                    sort_order: categories.length + 1
+                };
+                onSaveCategories([...categories, newCat]);
+                setNewCatName('');
+                showToast('تمت إضافة القسم جديد');
+            };
+
+            const handleDeleteCategory = (id) => {
+                const hasProducts = products.some(p => p.category_id === id);
+                if (hasProducts) {
+                    alert('لا يمكن حذف هذا القسم لأنه يحتوي على قطع مضافة. قم بنقل أو حذف القطع أولاً.');
+                    return;
+                }
+                if (confirm('هل أنت تأكد من حذف هذا القسم؟')) {
+                    onSaveCategories(categories.filter(c => c.id !== id));
+                    showToast('تم حذف القسم');
+                }
+            };
+
+            return (
+                <Modal title="إدارة الأقسام" onClose={onClose}>
+                    <div class="space-y-4">
+                        <form onSubmit={handleAddCategory} class="flex gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                            <input 
+                                type="text" 
+                                placeholder="رمز (مثال: ⚙️)"
+                                value={newCatIcon}
+                                onChange={(e) => setNewCatIcon(e.target.value)}
+                                class="w-12 bg-white border border-slate-300 rounded-lg text-center text-sm font-bold"
+                            />
+                            <input 
+                                type="text" 
+                                placeholder="اسم القسم الجديد..."
+                                value={newCatName}
+                                onChange={(e) => setNewCatName(e.target.value)}
+                                required
+                                class="flex-1 bg-white border border-slate-300 rounded-lg px-2 text-xs font-bold"
+                            />
+                            <button type="submit" class="bg-emerald-600 text-white font-bold px-3 text-xs rounded-lg whitespace-nowrap">إضافة</button>
+                        </form>
+
+                        <div class="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                            {categories.map(cat => {
+                                const count = products.filter(p => p.category_id === cat.id).length;
+                                return (
+                                    <div key={cat.id} class="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 text-xs font-bold">
+                                        <div class="flex items-center gap-2">
+                                            <span>{cat.icon}</span>
+                                            <span>{cat.name}</span>
+                                            <span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">({count} قطعة)</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleDeleteCategory(cat.id)}
+                                            class="text-red-500 hover:text-red-700 font-bold px-1"
+                                        >
+                                            🗑️
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <button onClick={onClose} class="w-full bg-slate-900 text-white font-bold py-2.5 rounded-xl text-xs">
+                            تم
+                        </button>
+                    </div>
+                </Modal>
+            );
+        }
+
+        // تشغيل React
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
